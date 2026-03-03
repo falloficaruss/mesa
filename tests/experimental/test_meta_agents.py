@@ -336,3 +336,129 @@ def test_find_combinations_without_evaluation_func(setup_agents):
     # This should not cause a TypeError from unpacking
     result = find_combinations(model, model.agents, size=2, evaluation_func=None)
     assert result == []  # No combinations when no evaluation function
+
+
+def test_create_meta_agent_join_strategy_first_is_backward_compatible(setup_agents):
+    """Default/first strategy selects the lowest unique_id existing meta-agent."""
+    model, agents = setup_agents
+
+    group_class = type("JoinGroupFirst", (MetaAgent,), {})
+    group1 = group_class(model, {agents[0], agents[1]})
+    group2 = group_class(model, {agents[0], agents[2]})
+
+    result = create_meta_agent(
+        model,
+        "JoinGroupFirst",
+        [agents[0], agents[3]],
+        Agent,
+        join_strategy="first",
+    )
+
+    expected = min([group1, group2], key=lambda x: x.unique_id)
+    assert result is expected
+    assert agents[3] in result.agents
+
+
+def test_create_meta_agent_join_strategy_random_uses_model_rng(setup_agents):
+    """Random strategy uses model RNG and is reproducible with RNG state."""
+    model, agents = setup_agents
+
+    group_class = type("JoinGroupRandom", (MetaAgent,), {})
+    group1 = group_class(model, {agents[0], agents[1]})
+    group2 = group_class(model, {agents[0], agents[2]})
+    candidates = [group1, group2]
+
+    state = model.random.getstate()
+    expected = model.random.choice(candidates)
+    model.random.setstate(state)
+
+    result = create_meta_agent(
+        model,
+        "JoinGroupRandom",
+        [agents[0], agents[3]],
+        Agent,
+        join_strategy="random",
+    )
+
+    assert result is expected
+    assert agents[3] in result.agents
+
+
+def test_create_meta_agent_join_strategy_largest(setup_agents):
+    """Largest strategy selects existing meta-agent with most components."""
+    model, agents = setup_agents
+
+    group_class = type("JoinGroupLargest", (MetaAgent,), {})
+    smaller = group_class(model, {agents[0]})
+    larger = group_class(model, {agents[0], agents[1], agents[2]})
+
+    result = create_meta_agent(
+        model,
+        "JoinGroupLargest",
+        [agents[0], agents[3]],
+        Agent,
+        join_strategy="largest",
+    )
+
+    assert result is larger
+    assert len(smaller.agents) == 1
+    assert agents[3] in larger.agents
+
+
+def test_create_meta_agent_join_strategy_callable(setup_agents):
+    """Callable strategy can deterministically choose among candidates."""
+    model, agents = setup_agents
+
+    group_class = type("JoinGroupCallable", (MetaAgent,), {})
+    low = group_class(model, {agents[0], agents[1]})
+    high = group_class(model, {agents[0], agents[2]})
+
+    result = create_meta_agent(
+        model,
+        "JoinGroupCallable",
+        [agents[0], agents[3]],
+        Agent,
+        join_strategy=lambda candidates, _agents, _model: max(
+            candidates, key=lambda x: x.unique_id
+        ),
+    )
+
+    assert result is max([low, high], key=lambda x: x.unique_id)
+    assert agents[3] in result.agents
+
+
+def test_create_meta_agent_join_strategy_invalid_string_raises(setup_agents):
+    """Unknown string join_strategy should raise ValueError."""
+    model, agents = setup_agents
+
+    group_class = type("JoinGroupInvalid", (MetaAgent,), {})
+    group_class(model, {agents[0], agents[1]})
+    group_class(model, {agents[0], agents[2]})
+
+    with pytest.raises(ValueError, match="Invalid join_strategy"):
+        create_meta_agent(
+            model,
+            "JoinGroupInvalid",
+            [agents[0], agents[3]],
+            Agent,
+            join_strategy="unknown",
+        )
+
+
+def test_create_meta_agent_join_strategy_callable_must_return_candidate(setup_agents):
+    """Callable join_strategy must return one of the discovered candidates."""
+    model, agents = setup_agents
+
+    group_class = type("JoinGroupInvalidCallable", (MetaAgent,), {})
+    group_class(model, {agents[0], agents[1]})
+    group_class(model, {agents[0], agents[2]})
+    outsider = MetaAgent(model, {agents[3]})
+
+    with pytest.raises(ValueError, match="must return one of the existing"):
+        create_meta_agent(
+            model,
+            "JoinGroupInvalidCallable",
+            [agents[0], agents[3]],
+            Agent,
+            join_strategy=lambda _candidates, _agents, _model: outsider,
+        )

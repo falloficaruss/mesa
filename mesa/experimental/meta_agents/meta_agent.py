@@ -143,6 +143,7 @@ def create_meta_agent(
     meta_methods: dict[str, Callable] | None = None,
     assume_constituting_agent_methods: bool = False,
     assume_constituting_agent_attributes: bool = False,
+    join_strategy: str | Callable[[list[Any], list[Any], Any], Any] = "first",
 ) -> Any | None:
     """Create a new meta-agent class and instantiate agents.
 
@@ -156,6 +157,14 @@ def create_meta_agent(
     constituting_-agents as meta_agent methods.
     assume_constituting_agent_attributes (bool): Whether to retain attributes
     from constituting_-agents.
+    join_strategy:
+        How to select among multiple existing meta-agents of the same class.
+        Built-in options are:
+        - "first": lowest unique_id (default, backward-compatible behavior)
+        - "random": use model.random.choice
+        - "largest": meta-agent with the most constituting agents
+        Or pass a callable with signature (existing_meta_agents, agents, model)
+        returning one candidate from existing_meta_agents.
 
     Returns:
         - MetaAgent Instance
@@ -251,13 +260,29 @@ def create_meta_agent(
                     existing_meta_agents.append(ma)
 
     if len(existing_meta_agents) > 0:
-        # TODO: Add way for user to specify how agents join meta-agent
-        # instead of random choice if there are multiple meta-agents of the same class
-        meta_agent = (
-            sorted(existing_meta_agents, key=lambda x: x.unique_id)[0]
-            if len(existing_meta_agents) > 1
-            else existing_meta_agents[0]
-        )
+        if len(existing_meta_agents) == 1:
+            meta_agent = existing_meta_agents[0]
+        else:
+            if callable(join_strategy):
+                meta_agent = join_strategy(existing_meta_agents, agents, model)
+            elif join_strategy == "first":
+                meta_agent = sorted(existing_meta_agents, key=lambda x: x.unique_id)[0]
+            elif join_strategy == "random":
+                meta_agent = model.random.choice(existing_meta_agents)
+            elif join_strategy == "largest":
+                meta_agent = max(existing_meta_agents, key=lambda x: len(x.agents))
+            else:
+                raise ValueError(
+                    "Invalid join_strategy. Expected one of "
+                    "{'first', 'random', 'largest'} or a callable."
+                )
+
+            if meta_agent not in existing_meta_agents:
+                raise ValueError(
+                    "Custom join_strategy must return one of the existing "
+                    "meta-agents candidates."
+                )
+
         add_attributes(meta_agent, agents, meta_attributes)
         add_methods(meta_agent, agents, meta_methods)
         meta_agent.add_constituting_agents(agents)
