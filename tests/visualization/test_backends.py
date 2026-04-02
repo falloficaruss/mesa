@@ -13,6 +13,7 @@ from mesa.discrete_space.grid import OrthogonalMooreGrid
 from mesa.experimental.continuous_space import ContinuousSpace, ContinuousSpaceAgent
 from mesa.visualization.backends import AltairBackend, MatplotlibBackend
 from mesa.visualization.components import AgentPortrayalStyle, PropertyLayerStyle
+from mesa.visualization.components.altair_components import _draw_grid
 
 
 @pytest.mark.parametrize("backend_cls", [MatplotlibBackend, AltairBackend])
@@ -304,6 +305,18 @@ def test_altair_backend_draw_property_layer():
                 color=None, colormap=None, alpha=1.0, vmin=0, vmax=1, colorbar=False
             ),
         )
+
+
+def test_altair_draw_grid_with_empty_space():
+    """Altair grid rendering should return a valid chart for empty spaces."""
+    space = OrthogonalMooreGrid([2, 2], random=random.Random(42))
+
+    chart = _draw_grid(space, lambda agent: {"id": agent.unique_id}, None)
+
+    chart_dict = chart.to_dict()
+    assert chart_dict["mark"]["type"] == "point"
+    assert chart_dict["width"] == 300
+    assert chart_dict["height"] == 300
 
 
 def test_backend_get_agent_pos():

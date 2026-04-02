@@ -159,50 +159,57 @@ def _draw_grid(space, agent_portrayal, property_layer_portrayal):
     invalid_tooltips = ["color", "size", "x", "y"]
 
     x_y_type = "ordinal" if not isinstance(space, ContinuousSpace) else "nominal"
+    chart_width = 300
+    chart_height = 300
 
-    encoding_dict = {
-        # no x-axis label
-        "x": alt.X("x", axis=None, type=x_y_type),
-        # no y-axis label
-        "y": alt.Y("y", axis=None, type=x_y_type),
-        "tooltip": [
-            alt.Tooltip(
-                key,
-                type="quantitative" if isinstance(value, (int, float)) else "nominal",
+    agent_chart = None
+    has_size = False
+
+    if all_agent_data:
+        encoding_dict = {
+            # no x-axis label
+            "x": alt.X("x", axis=None, type=x_y_type),
+            # no y-axis label
+            "y": alt.Y("y", axis=None, type=x_y_type),
+            "tooltip": [
+                alt.Tooltip(
+                    key,
+                    type="quantitative"
+                    if isinstance(value, (int, float))
+                    else "nominal",
+                )
+                for key, value in all_agent_data[0].items()
+                if key not in invalid_tooltips
+            ],
+        }
+        has_color = "color" in all_agent_data[0]
+        if has_color:
+            unique_colors = list({agent["color"] for agent in all_agent_data})
+            encoding_dict["color"] = alt.Color(
+                "color:N",
+                scale=alt.Scale(domain=unique_colors, range=unique_colors),
             )
-            for key, value in all_agent_data[0].items()
-            if key not in invalid_tooltips
-        ],
-    }
-    has_color = "color" in all_agent_data[0]
-    if has_color:
-        unique_colors = list({agent["color"] for agent in all_agent_data})
-        encoding_dict["color"] = alt.Color(
-            "color:N",
-            scale=alt.Scale(domain=unique_colors, range=unique_colors),
-        )
-    has_size = "size" in all_agent_data[0]
-    if has_size:
-        encoding_dict["size"] = alt.Size("size", type="quantitative")
+        has_size = "size" in all_agent_data[0]
+        if has_size:
+            encoding_dict["size"] = alt.Size("size", type="quantitative")
 
-    agent_chart = (
-        alt.Chart(
-            alt.Data(values=all_agent_data), encoding=alt.Encoding(**encoding_dict)
+        agent_chart = (
+            alt.Chart(
+                alt.Data(values=all_agent_data), encoding=alt.Encoding(**encoding_dict)
+            )
+            .mark_point(filled=True)
+            .properties(width=chart_width, height=chart_height)
         )
-        .mark_point(filled=True)
-        .properties(width=300, height=300)
-    )
+
+        # This is the default value for the marker size, which auto-scales according to the grid area.
+        if not has_size:
+            length = min(space.width, space.height)
+            agent_chart = agent_chart.mark_point(size=30000 / length**2, filled=True)
+
     base_chart = None
     cbar_chart = None
 
-    # This is the default value for the marker size, which auto-scales according to the grid area.
-    if not has_size:
-        length = min(space.width, space.height)
-        agent_chart = agent_chart.mark_point(size=30000 / length**2, filled=True)
-
     if property_layer_portrayal is not None:
-        chart_width = agent_chart.properties().width
-        chart_height = agent_chart.properties().height
         base_chart, cbar_chart = chart_property_layers(
             space=space,
             property_layer_portrayal=property_layer_portrayal,
@@ -210,11 +217,19 @@ def _draw_grid(space, agent_portrayal, property_layer_portrayal):
             chart_height=chart_height,
         )
 
-        base_chart = alt.layer(base_chart, agent_chart)
+        if agent_chart is not None:
+            base_chart = alt.layer(base_chart, agent_chart)
     else:
         base_chart = agent_chart
+
     if cbar_chart is not None:
         base_chart = alt.vconcat(base_chart, cbar_chart).configure_view(stroke=None)
+
+    if base_chart is None:
+        base_chart = alt.Chart(pd.DataFrame()).mark_point().properties(
+            width=chart_width, height=chart_height
+        )
+
     return base_chart
 
 
