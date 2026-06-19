@@ -1,112 +1,140 @@
-"""runner for global performance benchmarks."""
+"""Runner for global performance benchmarks."""
+
+from __future__ import annotations
 
 import gc
 import os
 import pickle
 import sys
 import time
+import tracemalloc
 
-# making sure we use this version of mesa and not one
-# also installed in site_packages or so.
-sys.path.insert(0, os.path.abspath(".."))
+_BENCHMARK_DIR = os.path.dirname(__file__)
+_REPO_ROOT = os.path.abspath(os.path.join(_BENCHMARK_DIR, ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
-from configurations import configurations
+try:  # pragma: no cover - import style depends on execution mode.
+    from .configurations import configurations
+except ImportError:  # pragma: no cover - script execution path.
+    from configurations import configurations
 
 
-# Generic function to initialize and run a model
 def run_model(model_class, steps, scenario):
-    """Run model for given scenario.
-
-    Args:
-        model_class: a model class
-        steps: number of steps to run the model
-        scenario: Scenario instance with model parameters
-
-    Returns:
-        startup time and run time
-    """
-    # Explicitly collect garbage before the run to ensure a clean memory state
+    """Run one model instance and capture timing plus peak allocations."""
     gc.collect()
-
-    # Disable GC during timed runs to avoid random slowdowns
     gc.disable()
+    tracemalloc.start()
+
+    model = None
     start_init = time.perf_counter()
-    model = model_class(scenario=scenario)
 
-    end_init_start_run = time.perf_counter()
+    try:
+        model = model_class(scenario=scenario)
+        end_init = time.perf_counter()
+        init_peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.reset_peak()
 
-    model.run_for(steps)
+        model.run_for(steps)
+        end_run = time.perf_counter()
+        run_peak = tracemalloc.get_traced_memory()[1]
 
-    end_run = time.perf_counter()
-    gc.enable()  # Re-enable GC after benchmarking
+        return {
+            "init_time_s": end_init - start_init,
+            "run_time_s": end_run - end_init,
+            "peak_init_bytes": init_peak,
+            "peak_run_bytes": run_peak,
+        }
+    finally:
+        try:
+            if model is not None:
+                model.remove_all_agents()
+                model = None
+        finally:
+            tracemalloc.stop()
+            gc.enable()
+            gc.collect()
 
-    # Clean up to avoid memory leaks
-    model.remove_all_agents()
 
-    # Force a final collection to reclaim memory before the next iteration
-    gc.collect()
-    return (end_init_start_run - start_init), (end_run - end_init_start_run)
-
-
-# Function to run experiments and save the fastest iteration for each scenario
 def run_experiments(model_class, config):
-    """Run performance benchmarks.
-
-    Args:
-        model_class: the model class to use for the benchmark
-        config: the benchmark configuration
-
-    """
+    """Run performance benchmarks for one model configuration."""
     init_times = []
     run_times = []
+    peak_init_bytes = []
+    peak_run_bytes = []
 
     steps = config["steps"]
-
     for scenario in config["scenario"].spawn_replications(config["replications"]):
         fastest_init = float("inf")
         fastest_run = float("inf")
+        lowest_peak_init = float("inf")
+        lowest_peak_run = float("inf")
 
-        # Warm-up: run 3 times before starting measurement
-        # This eliminates cold start penalty
         for _ in range(3):
             run_model(model_class, steps, scenario)
 
-        # Actual measured iterations
         for _ in range(config["iterations"]):
-            init_time, run_time = run_model(model_class, steps, scenario)
-            if init_time < fastest_init:
-                fastest_init = init_time
-            if run_time < fastest_run:
-                fastest_run = run_time
+            metrics = run_model(model_class, steps, scenario)
+            if metrics["init_time_s"] < fastest_init:
+                fastest_init = metrics["init_time_s"]
+                lowest_peak_init = metrics["peak_init_bytes"]
+            if metrics["run_time_s"] < fastest_run:
+                fastest_run = metrics["run_time_s"]
+                lowest_peak_run = metrics["peak_run_bytes"]
+
         init_times.append(fastest_init)
         run_times.append(fastest_run)
+        peak_init_bytes.append(lowest_peak_init)
+        peak_run_bytes.append(lowest_peak_run)
 
-    return init_times, run_times
+    return {
+        "init_time_s": init_times,
+        "run_time_s": run_times,
+        "peak_init_bytes": peak_init_bytes,
+        "peak_run_bytes": peak_run_bytes,
+    }
 
 
-print(f"{time.strftime('%H:%M:%S', time.localtime())} starting benchmarks.")
-results_dict = {}
-for model, model_config in configurations.items():
-    for size, config in model_config.items():
-        results = run_experiments(model, config)
+def _mean(values):
+    return sum(values) / len(values)
 
-        mean_init = sum(results[0]) / len(results[0])
-        mean_run = sum(results[1]) / len(results[1])
 
-        print(
-            f"{time.strftime('%H:%M:%S', time.localtime())} {model.__name__:<14} ({size}) timings: Init {mean_init:.5f} s; Run {mean_run:.4f} s"
-        )
+def _bytes_to_mib(value):
+    return value / (1024 * 1024)
 
-        results_dict[model, size] = results
 
-# Change this name to anything you like
-save_name = "timings"
+def main():
+    """Run the benchmark suite and persist the results."""
+    print(f"{time.strftime('%H:%M:%S', time.localtime())} starting benchmarks.")
+    results_dict = {}
+    for model, model_config in configurations.items():
+        for size, config in model_config.items():
+            results = run_experiments(model, config)
 
-i = 1
-while os.path.exists(f"{save_name}_{i}.pickle"):
-    i += 1
+            mean_init = _mean(results["init_time_s"])
+            mean_run = _mean(results["run_time_s"])
+            mean_init_peak = _bytes_to_mib(_mean(results["peak_init_bytes"]))
+            mean_run_peak = _bytes_to_mib(_mean(results["peak_run_bytes"]))
 
-with open(f"{save_name}_{i}.pickle", "wb") as handle:
-    pickle.dump(results_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            print(
+                f"{time.strftime('%H:%M:%S', time.localtime())} "
+                f"{model.__name__:<22} ({size}) timings: "
+                f"Init {mean_init:.5f} s; Run {mean_run:.4f} s; "
+                f"Peak init {mean_init_peak:.2f} MiB; Peak run {mean_run_peak:.2f} MiB"
+            )
 
-print(f"Done benchmarking. Saved results to {save_name}_{i}.pickle.")
+            results_dict[model, size] = results
+
+    save_name = "timings"
+    i = 1
+    while os.path.exists(f"{save_name}_{i}.pickle"):
+        i += 1
+
+    with open(f"{save_name}_{i}.pickle", "wb") as handle:
+        pickle.dump(results_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    print(f"Done benchmarking. Saved results to {save_name}_{i}.pickle.")
+
+
+if __name__ == "__main__":
+    main()

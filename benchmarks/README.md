@@ -1,8 +1,8 @@
 # Mesa Performance Benchmarks
 
-The `/benchmarks` directory contains tools for benchmarking the Mesa library performance on the included example models. This allows to track and compare model initialisation time and runtime between different Mesa versions.
+The `/benchmarks` directory contains tools for benchmarking the Mesa library performance on the included example models. This allows to track and compare model initialisation time, runtime, and memory pressure between different Mesa versions.
 
-MESA uses several example base models for benchmarking performance (BoltzmannWealth, Schelling, BoidFlockers, and WolfSheep) by calculating the initialization time and run time for each of these models. These example models can be found in the `/mesa/examples` directory.
+MESA uses several example base models for benchmarking performance (BoltzmannWealth, Schelling, BoidFlockers, and WolfSheep) by calculating the initialization time and run time for each of these models. The benchmark suite also includes a synthetic logistics workload that stays inside `/benchmarks` and is designed to stress entity indexing and memory usage at a larger scale.
 
 ## Available Files
 
@@ -35,7 +35,7 @@ python global_benchmark.py
 
 This will:
 - Run all models defined in `configurations.py` with their respective configurations
-- Measure initialization time and run time for each model
+- Measure initialization time, run time, and peak Python allocation for each model
 - Save results to a pickle file named `timings_X.pickle` (where X is an incremental number)
 - Display a summary of results in the terminal
 
@@ -46,6 +46,7 @@ This will:
 
 - **Initialization time**: How long it takes to create model instances
 - **Run time**: How long it takes to run the model for the specified number of steps
+- **Peak Python allocation**: The maximum Python-level memory observed during initialization and during the run loop via `tracemalloc`
 
 ### 3. Comparing Results
 
@@ -64,6 +65,7 @@ After running benchmarks at different times (e.g., before and after code changes
 
 The output will show:
 - Percentage changes in initialization and run times
+- Percentage changes in peak initialization and peak run memory
 - 95% confidence intervals for the changes
 - Emojis indicate performance changes:
   - 🟢 Faster performance (>3% improvement)

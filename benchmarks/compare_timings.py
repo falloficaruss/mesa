@@ -53,32 +53,47 @@ def performance_emoji(lower, upper):
         return "🔵"  # Emoji for insignificant change
 
 
+def extract_series(results, metric, fallback_index=None):
+    """Return a metric series from either the new dict format or the legacy tuple."""
+    if isinstance(results, dict):
+        return results.get(metric)
+    if fallback_index is None:
+        return None
+    return results[fallback_index]
+
+
+def summary_or_na(series_1, series_2):
+    """Return a formatted comparison summary or N/A when the metric is absent."""
+    if series_1 is None or series_2 is None:
+        return "N/A"
+
+    change, lower, upper = bootstrap_percentage_change_confidence_interval(
+        series_1, series_2
+    )
+    emoji = performance_emoji(lower, upper)
+    return f"{emoji} {change:+.1f}% [{lower:+.1f}%, {upper:+.1f}%]"
+
+
 # Iterate over the models and sizes, perform analysis, and populate the DataFrame
 for model, size in timings_1:
     model_name = model.__name__
 
-    # Calculate percentage change and confidence interval for init times
-    (
-        init_change,
-        init_lower,
-        init_upper,
-    ) = bootstrap_percentage_change_confidence_interval(
-        timings_1[(model, size)][0], timings_2[(model, size)][0]
+    init_summary = summary_or_na(
+        extract_series(timings_1[(model, size)], "init_time_s", 0),
+        extract_series(timings_2[(model, size)], "init_time_s", 0),
     )
-    init_emoji = performance_emoji(init_lower, init_upper)
-    init_summary = (
-        f"{init_emoji} {init_change:+.1f}% [{init_lower:+.1f}%, {init_upper:+.1f}%]"
+    run_summary = summary_or_na(
+        extract_series(timings_1[(model, size)], "run_time_s", 1),
+        extract_series(timings_2[(model, size)], "run_time_s", 1),
     )
-
-    # Calculate percentage change and confidence interval for run times
-    run_change, run_lower, run_upper = bootstrap_percentage_change_confidence_interval(
-        timings_1[(model, size)][1], timings_2[(model, size)][1]
+    peak_init_summary = summary_or_na(
+        extract_series(timings_1[(model, size)], "peak_init_bytes", None),
+        extract_series(timings_2[(model, size)], "peak_init_bytes", None),
     )
-    run_emoji = performance_emoji(run_lower, run_upper)
-    run_summary = (
-        f"{run_emoji} {run_change:+.1f}% [{run_lower:+.1f}%, {run_upper:+.1f}%]"
+    peak_run_summary = summary_or_na(
+        extract_series(timings_1[(model, size)], "peak_run_bytes", None),
+        extract_series(timings_2[(model, size)], "peak_run_bytes", None),
     )
-
     # Append results to DataFrame
     row = pd.DataFrame(
         {
@@ -86,6 +101,8 @@ for model, size in timings_1:
             "Size": [size],
             "Init time [95% CI]": [init_summary],
             "Run time [95% CI]": [run_summary],
+            "Peak init memory [95% CI]": [peak_init_summary],
+            "Peak run memory [95% CI]": [peak_run_summary],
         }
     )
 

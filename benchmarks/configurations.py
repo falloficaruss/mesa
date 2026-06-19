@@ -1,5 +1,10 @@
 """configurations for benchmarks."""
 
+try:  # pragma: no cover - import style depends on how the benchmark is launched.
+    from .logistics_benchmark import LogisticsHubBenchmark, LogisticsScenario
+except ImportError:
+    from logistics_benchmark import LogisticsHubBenchmark, LogisticsScenario
+
 from mesa.examples import (
     BoidFlockers,
     BoltzmannWealth,
@@ -14,6 +19,33 @@ from mesa.examples.basic.boltzmann_wealth_model.model import BoltzmannScenario
 from mesa.examples.basic.schelling.model import SchellingScenario
 
 configurations = {
+    # Synthetic logistics workload for entity-index and memory pressure
+    LogisticsHubBenchmark: {
+        "small": {
+            "replications": 5,
+            "iterations": 3,
+            "steps": 5,
+            "scenario": LogisticsScenario(
+                hubs=6,
+                crews=96,
+                parcels=1_000,
+                reassignments_per_step=96,
+                refresh_batch=48,
+            ),
+        },
+        "large": {
+            "replications": 3,
+            "iterations": 2,
+            "steps": 12,
+            "scenario": LogisticsScenario(
+                hubs=18,
+                crews=768,
+                parcels=8_000,
+                reassignments_per_step=384,
+                refresh_batch=192,
+            ),
+        },
+    },
     # BoltzmannWealth Model Configurations
     BoltzmannWealth: {
         "small": {
