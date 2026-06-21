@@ -4,6 +4,17 @@ The `/benchmarks` directory contains tools for benchmarking the Mesa library per
 
 MESA uses several example base models for benchmarking performance (BoltzmannWealth, Schelling, BoidFlockers, and WolfSheep) by calculating the initialization time and run time for each of these models. The benchmark suite also includes a synthetic logistics workload that stays inside `/benchmarks` and is designed to stress entity indexing and memory usage at a larger scale.
 
+The logistics workload ships in two variants and two sizes:
+
+- `LogisticsHubBenchmark`: full entity indexing enabled
+- `LogisticsHubBenchmarkNoEntityIndex`: minimal stable-id registry with the reverse indexes disabled
+- `small`: a moderate workload for quicker iteration
+- `huge`: a much larger workload to amplify time and memory differences
+
+These are useful for comparing the time and memory cost of the explicit entity index against the same meta-agent workload without that bookkeeping.
+
+The standard benchmark runner now also prints a direct `indexed - no-index` delta summary for the logistics workload so you can see the overhead immediately instead of diffing files by hand.
+
 ## Available Files
 
 - `configurations.py`: Contains model configurations for benchmarking
@@ -17,7 +28,7 @@ MESA uses several example base models for benchmarking performance (BoltzmannWea
 
 The `configurations.py` file defines which models to benchmark and their parameters. Each model has:
 
-- `small` and `large` configurations for testing different scales
+- `small` and `huge` configurations for testing different scales
 - Parameters for:
   - `seeds`: Number of different random seeds to use
   - `replications`: Number of times to repeat the benchmark for each seed

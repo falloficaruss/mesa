@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from mesa import Agent, Model
 from mesa.experimental.meta_agents.backend import MembershipBackend
-from mesa.experimental.meta_agents.identity import ensure_entity_index
+from mesa.experimental.meta_agents.identity import EntityIndex
 from mesa.experimental.meta_agents.meta_agent import MetaAgent, create_meta_agent
 from mesa.experimental.scenarios import Scenario
 
@@ -19,85 +19,57 @@ class LogisticsScenario(Scenario):
     refresh_batch: int = 64
 
 
-class _TrackedAgent(Agent):
-    """Agent helper that can clean up backend memberships on removal."""
+class _DisabledEntityIndex:
+    """Minimal registry used to benchmark the workload without entity indexing."""
 
-    cleanup_mode = "agent"
+    def __init__(self) -> None:
+        self._next_entity_id = 1
+        self._entity_id_by_object: dict[int, int] = {}
 
-    def remove(self) -> None:
-        backend = getattr(self.model, "membership_backend", None)
-        if backend is not None:
-            if self.cleanup_mode in {"agent", "both"}:
-                backend.remove_agent(self)
-            if self.cleanup_mode in {"group", "both"}:
-                backend.remove_group(self)
-        super().remove()
+    def register(self, entity, kind: str | None = None):  # noqa: D401, ARG002
+        """Assign a stable ``entity_id`` without maintaining reverse indexes."""
+        object_key = id(entity)
+        entity_id = self._entity_id_by_object.get(object_key)
+        if entity_id is None:
+            entity_id = self._next_entity_id
+            self._next_entity_id += 1
+            self._entity_id_by_object[object_key] = entity_id
 
+        try:
+            setattr(entity, "entity_id", entity_id)
+        except Exception:
+            # Keep the benchmark resilient to external objects that disallow writes.
+            pass
 
-class HubAgent(_TrackedAgent):
-    """Distribution hub that anchors parcel and crew memberships."""
+        return entity_id
 
-    cleanup_mode = "group"
+    def remove(self, entity_or_id):  # noqa: D401, ANN001
+        """Drop the object-id mapping for an entity if it exists."""
+        if isinstance(entity_or_id, int):
+            stale_keys = [
+                object_key
+                for object_key, entity_id in self._entity_id_by_object.items()
+                if entity_id == entity_or_id
+            ]
+            for object_key in stale_keys:
+                self._entity_id_by_object.pop(object_key, None)
+            return
 
-    def __init__(self, model: Model, hub_code: int):
-        super().__init__(model)
-        self.hub_code = hub_code
-        self.backlog = 0
-        self.throughput = 0
+        self._entity_id_by_object.pop(id(entity_or_id), None)
 
-
-class ParcelAgent(_TrackedAgent):
-    """Shipment that moves between hubs and drives membership churn."""
-
-    def __init__(
-        self,
-        model: Model,
-        origin_hub: HubAgent,
-        destination_hub: HubAgent,
-        priority: int,
-    ):
-        super().__init__(model)
-        self.origin_hub = origin_hub
-        self.current_hub = origin_hub
-        self.destination_hub = destination_hub
-        self.priority = priority
-        self.scan_count = 0
+    def assert_invariants(self) -> None:
+        """No-op invariant hook to match the real registry interface."""
 
 
-class RouterAgent(_TrackedAgent):
-    """Crew role that directs parcel routing."""
+class _LogisticsHubBenchmarkBase(Model):
+    """Shared benchmark workload with pluggable entity indexing."""
 
-    def __init__(self, model: Model, hub_code: int):
-        super().__init__(model)
-        self.hub_code = hub_code
-        self.route_bias = 0
-
-
-class ScannerAgent(_TrackedAgent):
-    """Crew role that tracks parcel scans."""
-
-    def __init__(self, model: Model, hub_code: int):
-        super().__init__(model)
-        self.hub_code = hub_code
-        self.scan_total = 0
-
-
-class LoaderAgent(_TrackedAgent):
-    """Crew role that handles loading throughput."""
-
-    def __init__(self, model: Model, hub_code: int):
-        super().__init__(model)
-        self.hub_code = hub_code
-        self.loaded = 0
-
-
-class LogisticsHubBenchmark(Model):
-    """Large synthetic logistics simulation for benchmarking entity indexing."""
+    entity_index_factory = EntityIndex
 
     def __init__(self, scenario: LogisticsScenario = LogisticsScenario):
         super().__init__(scenario=scenario)
         self.membership_backend = MembershipBackend()
-        self.entity_index = ensure_entity_index(self)
+        self.entity_index = self.entity_index_factory()
         self.hubs = [HubAgent(self, hub_code=index) for index in range(scenario.hubs)]
         self.parcels: list[ParcelAgent] = []
         self.crews: list[Agent] = []
@@ -265,3 +237,85 @@ class LogisticsHubBenchmark(Model):
         self._move_parcels(parcel_batch)
         self._rotate_crews(crew_batch)
         self._refresh_entity_directory(parcel_batch, crew_batch)
+
+
+class _TrackedAgent(Agent):
+    """Agent helper that can clean up backend memberships on removal."""
+
+    cleanup_mode = "agent"
+
+    def remove(self) -> None:
+        backend = getattr(self.model, "membership_backend", None)
+        if backend is not None:
+            if self.cleanup_mode in {"agent", "both"}:
+                backend.remove_agent(self)
+            if self.cleanup_mode in {"group", "both"}:
+                backend.remove_group(self)
+        super().remove()
+
+
+class HubAgent(_TrackedAgent):
+    """Distribution hub that anchors parcel and crew memberships."""
+
+    cleanup_mode = "group"
+
+    def __init__(self, model: Model, hub_code: int):
+        super().__init__(model)
+        self.hub_code = hub_code
+        self.backlog = 0
+        self.throughput = 0
+
+
+class ParcelAgent(_TrackedAgent):
+    """Shipment that moves between hubs and drives membership churn."""
+
+    def __init__(
+        self,
+        model: Model,
+        origin_hub: HubAgent,
+        destination_hub: HubAgent,
+        priority: int,
+    ):
+        super().__init__(model)
+        self.origin_hub = origin_hub
+        self.current_hub = origin_hub
+        self.destination_hub = destination_hub
+        self.priority = priority
+        self.scan_count = 0
+
+
+class RouterAgent(_TrackedAgent):
+    """Crew role that directs parcel routing."""
+
+    def __init__(self, model: Model, hub_code: int):
+        super().__init__(model)
+        self.hub_code = hub_code
+        self.route_bias = 0
+
+
+class ScannerAgent(_TrackedAgent):
+    """Crew role that tracks parcel scans."""
+
+    def __init__(self, model: Model, hub_code: int):
+        super().__init__(model)
+        self.hub_code = hub_code
+        self.scan_total = 0
+
+
+class LoaderAgent(_TrackedAgent):
+    """Crew role that handles loading throughput."""
+
+    def __init__(self, model: Model, hub_code: int):
+        super().__init__(model)
+        self.hub_code = hub_code
+        self.loaded = 0
+
+
+class LogisticsHubBenchmark(_LogisticsHubBenchmarkBase):
+    """Large synthetic logistics simulation with explicit entity indexing."""
+
+
+class LogisticsHubBenchmarkNoEntityIndex(_LogisticsHubBenchmarkBase):
+    """Same workload, but without the explicit entity-index bookkeeping."""
+
+    entity_index_factory = _DisabledEntityIndex

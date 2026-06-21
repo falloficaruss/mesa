@@ -103,6 +103,65 @@ def _bytes_to_mib(value):
     return value / (1024 * 1024)
 
 
+def _format_delta(value: float, baseline: float, unit: str) -> str:
+    """Format an absolute and percentage delta against a baseline."""
+    percent = float("inf") if baseline == 0 else 100 * value / baseline
+    if unit == "s":
+        absolute = f"{value:+.5f} s"
+    else:
+        absolute = f"{value:+.2f} MiB"
+    if baseline == 0:
+        return f"{absolute} (n/a)"
+    return f"{absolute} ({percent:+.1f}%)"
+
+
+def _log_logistics_deltas(results_dict):
+    """Print indexed-vs-no-index deltas for the logistics benchmark."""
+    indexed_key = None
+    no_index_key = None
+    for model, size in results_dict:
+        if model.__name__ == "LogisticsHubBenchmark":
+            indexed_key = model
+        elif model.__name__ == "LogisticsHubBenchmarkNoEntityIndex":
+            no_index_key = model
+
+    if indexed_key is None or no_index_key is None:
+        return
+
+    sizes = []
+    seen_sizes = set()
+    for model, size in results_dict:
+        if model not in {indexed_key, no_index_key}:
+            continue
+        if size not in seen_sizes:
+            sizes.append(size)
+            seen_sizes.add(size)
+
+    for size in sizes:
+        indexed_results = results_dict.get((indexed_key, size))
+        no_index_results = results_dict.get((no_index_key, size))
+        if indexed_results is None or no_index_results is None:
+            continue
+
+        indexed_init = _mean(indexed_results["init_time_s"])
+        no_index_init = _mean(no_index_results["init_time_s"])
+        indexed_run = _mean(indexed_results["run_time_s"])
+        no_index_run = _mean(no_index_results["run_time_s"])
+        indexed_peak_init = _bytes_to_mib(_mean(indexed_results["peak_init_bytes"]))
+        no_index_peak_init = _bytes_to_mib(_mean(no_index_results["peak_init_bytes"]))
+        indexed_peak_run = _bytes_to_mib(_mean(indexed_results["peak_run_bytes"]))
+        no_index_peak_run = _bytes_to_mib(_mean(no_index_results["peak_run_bytes"]))
+
+        print(
+            f"{time.strftime('%H:%M:%S', time.localtime())} "
+            f"Logistics delta ({size}, indexed - no-index): "
+            f"Init {_format_delta(indexed_init - no_index_init, no_index_init, 's')}; "
+            f"Run {_format_delta(indexed_run - no_index_run, no_index_run, 's')}; "
+            f"Peak init {_format_delta(indexed_peak_init - no_index_peak_init, no_index_peak_init, 'mib')}; "
+            f"Peak run {_format_delta(indexed_peak_run - no_index_peak_run, no_index_peak_run, 'mib')}"
+        )
+
+
 def main():
     """Run the benchmark suite and persist the results."""
     print(f"{time.strftime('%H:%M:%S', time.localtime())} starting benchmarks.")
@@ -133,6 +192,7 @@ def main():
     with open(f"{save_name}_{i}.pickle", "wb") as handle:
         pickle.dump(results_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+    _log_logistics_deltas(results_dict)
     print(f"Done benchmarking. Saved results to {save_name}_{i}.pickle.")
 
 
