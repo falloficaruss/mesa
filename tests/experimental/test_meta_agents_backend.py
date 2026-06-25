@@ -143,3 +143,17 @@ def test_model_deregister_clean_atomic_entity_index_entries():
     assert not entity_index.contains(entity_id)
     with pytest.raises(KeyError):
         entity_index.entity_for(entity_id)
+
+
+def test_entity_index_is_opt_in_until_requested():
+    """Regular models should not pay entity-index overhead unless asked to."""
+    model = Model()
+    agent = Agent(model)
+
+    assert not hasattr(model, "entity_index")
+
+    entity_index = ensure_entity_index(model)
+
+    assert hasattr(model, "entity_index")
+    assert entity_index.entity_for(agent.entity_id) is agent
+    entity_index.assert_invariants()

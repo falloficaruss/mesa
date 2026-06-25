@@ -264,10 +264,9 @@ class Model[A: Agent, S: Scenario](HasEmitters):
         agent.unique_id = self.agent_id_counter
         self.agent_id_counter += 1
 
-        # keep the explicit identity layer in sync with the core agent registry.
-        from mesa.experimental.meta_agents.identity import ensure_entity_index
-
-        ensure_entity_index(self).register(agent, kind="atomic")
+        entity_index = getattr(self, "entity_index", None)
+        if entity_index is not None:
+            entity_index.register(agent, kind="atomic")
 
         # because AgentSet requires model, we cannot use defaultdict
         # tricks with a function won't work because model then cannot be pickled
@@ -297,9 +296,9 @@ class Model[A: Agent, S: Scenario](HasEmitters):
         self._agents_by_type[type(agent)].remove(agent)
         self._all_agents.remove(agent)
 
-        from mesa.experimental.meta_agents.identity import ensure_entity_index
-
-        ensure_entity_index(self).remove(agent)
+        entity_index = getattr(self, "entity_index", None)
+        if entity_index is not None:
+            entity_index.remove(agent)
 
         _mesa_logger.debug(f"deregistered agent with agent_id {agent.unique_id}")
 

@@ -16,7 +16,7 @@ with open(f"{filename2}.pickle", "rb") as handle:
 
 
 def bootstrap_percentage_change_confidence_interval(data1, data2, n=1000):
-    """Calculate the percentage change and perform bootstrap to estimate the confidence interval.
+    """Calculate the percentage change and bootstrap a confidence interval.
 
     Args:
         data1: benchmark dataset 1
@@ -24,7 +24,7 @@ def bootstrap_percentage_change_confidence_interval(data1, data2, n=1000):
         n: bootstrap sample size
 
     Returns:
-        float, mean, and lower and upper bound of confidence interval.
+        float, median, and lower and upper bound of confidence interval.
     """
     change_samples = []
     for _ in range(n):
@@ -34,9 +34,9 @@ def bootstrap_percentage_change_confidence_interval(data1, data2, n=1000):
         sampled_data1 = np.array(data1)[sampled_indices]
         sampled_data2 = np.array(data2)[sampled_indices]
         change = 100 * (sampled_data2 - sampled_data1) / sampled_data1
-        change_samples.append(np.mean(change))
+        change_samples.append(np.median(change))
     lower, upper = np.percentile(change_samples, [2.5, 97.5])
-    return np.mean(change_samples), lower, upper
+    return np.median(change_samples), lower, upper
 
 
 # DataFrame to store the results

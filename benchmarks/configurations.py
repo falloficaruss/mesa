@@ -26,44 +26,65 @@ from mesa.examples.basic.boid_flockers.model import BoidsScenario
 from mesa.examples.basic.boltzmann_wealth_model.model import BoltzmannScenario
 from mesa.examples.basic.schelling.model import SchellingScenario
 
-def _logistics_small_config() -> dict:
-    return {
-        "replications": 5,
-        "iterations": 3,
-        "steps": 5,
-        "scenario": LogisticsScenario(
-            hubs=6,
-            crews=96,
-            parcels=1_000,
-            reassignments_per_step=96,
-            refresh_batch=48,
-        ),
-    }
+_LOGISTICS_BENCHMARK_CONTROLS = {
+    "replications": 2,
+    "iterations": 2,
+    "steps": 5,
+}
 
 
-def _logistics_huge_config() -> dict:
+def _logistics_config(
+    *,
+    hubs: int,
+    crews: int,
+    parcels: int,
+    reassignments_per_step: int,
+    refresh_batch: int,
+) -> dict:
     return {
-        "replications": 2,
-        "iterations": 2,
-        "steps": 8,
+        **_LOGISTICS_BENCHMARK_CONTROLS,
         "scenario": LogisticsScenario(
-            hubs=32,
-            crews=2_048,
-            parcels=24_000,
-            reassignments_per_step=1_024,
-            refresh_batch=512,
+            hubs=hubs,
+            crews=crews,
+            parcels=parcels,
+            reassignments_per_step=reassignments_per_step,
+            refresh_batch=refresh_batch,
         ),
     }
 
 configurations = {
     # Synthetic logistics workload for entity-index and memory pressure
     LogisticsHubBenchmark: {
-        "small": _logistics_small_config(),
-        "huge": _logistics_huge_config(),
+        "small": _logistics_config(
+            hubs=6,
+            crews=96,
+            parcels=1_000,
+            reassignments_per_step=96,
+            refresh_batch=48,
+        ),
+        "huge": _logistics_config(
+            hubs=32,
+            crews=2_048,
+            parcels=24_000,
+            reassignments_per_step=1_024,
+            refresh_batch=512,
+        ),
     },
     LogisticsHubBenchmarkNoEntityIndex: {
-        "small": _logistics_small_config(),
-        "huge": _logistics_huge_config(),
+        "small": _logistics_config(
+            hubs=6,
+            crews=96,
+            parcels=1_000,
+            reassignments_per_step=96,
+            refresh_batch=48,
+        ),
+        "huge": _logistics_config(
+            hubs=32,
+            crews=2_048,
+            parcels=24_000,
+            reassignments_per_step=1_024,
+            refresh_batch=512,
+        ),
     },
     # BoltzmannWealth Model Configurations
     BoltzmannWealth: {

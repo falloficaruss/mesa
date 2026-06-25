@@ -8,6 +8,7 @@ import pickle
 import sys
 import time
 import tracemalloc
+from statistics import median
 
 _BENCHMARK_DIR = os.path.dirname(__file__)
 _REPO_ROOT = os.path.abspath(os.path.join(_BENCHMARK_DIR, ".."))
@@ -95,8 +96,8 @@ def run_experiments(model_class, config):
     }
 
 
-def _mean(values):
-    return sum(values) / len(values)
+def _median(values):
+    return median(values)
 
 
 def _bytes_to_mib(value):
@@ -143,14 +144,14 @@ def _log_logistics_deltas(results_dict):
         if indexed_results is None or no_index_results is None:
             continue
 
-        indexed_init = _mean(indexed_results["init_time_s"])
-        no_index_init = _mean(no_index_results["init_time_s"])
-        indexed_run = _mean(indexed_results["run_time_s"])
-        no_index_run = _mean(no_index_results["run_time_s"])
-        indexed_peak_init = _bytes_to_mib(_mean(indexed_results["peak_init_bytes"]))
-        no_index_peak_init = _bytes_to_mib(_mean(no_index_results["peak_init_bytes"]))
-        indexed_peak_run = _bytes_to_mib(_mean(indexed_results["peak_run_bytes"]))
-        no_index_peak_run = _bytes_to_mib(_mean(no_index_results["peak_run_bytes"]))
+        indexed_init = _median(indexed_results["init_time_s"])
+        no_index_init = _median(no_index_results["init_time_s"])
+        indexed_run = _median(indexed_results["run_time_s"])
+        no_index_run = _median(no_index_results["run_time_s"])
+        indexed_peak_init = _bytes_to_mib(_median(indexed_results["peak_init_bytes"]))
+        no_index_peak_init = _bytes_to_mib(_median(no_index_results["peak_init_bytes"]))
+        indexed_peak_run = _bytes_to_mib(_median(indexed_results["peak_run_bytes"]))
+        no_index_peak_run = _bytes_to_mib(_median(no_index_results["peak_run_bytes"]))
 
         print(
             f"{time.strftime('%H:%M:%S', time.localtime())} "
@@ -170,16 +171,16 @@ def main():
         for size, config in model_config.items():
             results = run_experiments(model, config)
 
-            mean_init = _mean(results["init_time_s"])
-            mean_run = _mean(results["run_time_s"])
-            mean_init_peak = _bytes_to_mib(_mean(results["peak_init_bytes"]))
-            mean_run_peak = _bytes_to_mib(_mean(results["peak_run_bytes"]))
+            median_init = _median(results["init_time_s"])
+            median_run = _median(results["run_time_s"])
+            median_init_peak = _bytes_to_mib(_median(results["peak_init_bytes"]))
+            median_run_peak = _bytes_to_mib(_median(results["peak_run_bytes"]))
 
             print(
                 f"{time.strftime('%H:%M:%S', time.localtime())} "
                 f"{model.__name__:<22} ({size}) timings: "
-                f"Init {mean_init:.5f} s; Run {mean_run:.4f} s; "
-                f"Peak init {mean_init_peak:.2f} MiB; Peak run {mean_run_peak:.2f} MiB"
+                f"Median init {median_init:.5f} s; Median run {median_run:.4f} s; "
+                f"Median peak init {median_init_peak:.2f} MiB; Median peak run {median_run_peak:.2f} MiB"
             )
 
             results_dict[model, size] = results

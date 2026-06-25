@@ -126,6 +126,17 @@ def test_logistics_benchmark_config_covers_small_and_huge_modes():
         assert benchmark_cls in configurations
         assert set(configurations[benchmark_cls]) == {"small", "huge"}
 
+    control_triplets = {
+        (
+            config["replications"],
+            config["iterations"],
+            config["steps"],
+        )
+        for benchmark_cls in (LogisticsHubBenchmark, LogisticsHubBenchmarkNoEntityIndex)
+        for config in configurations[benchmark_cls].values()
+    }
+    assert len(control_triplets) == 1
+
 
 def test_logistics_benchmark_delta_summary_is_printed(capsys):
     """The benchmark runner should print indexed-vs-no-index deltas."""

@@ -12,8 +12,10 @@ The logistics workload ships in two variants and two sizes:
 - `huge`: a much larger workload to amplify time and memory differences
 
 These are useful for comparing the time and memory cost of the explicit entity index against the same meta-agent workload without that bookkeeping.
+The logistics `small` and `huge` scenarios share the same benchmark controls so the comparison stays focused on workload scale and indexing mode.
 
 The standard benchmark runner now also prints a direct `indexed - no-index` delta summary for the logistics workload so you can see the overhead immediately instead of diffing files by hand.
+The benchmark summaries use a median across the sampled replications so a single noisy run does not dominate the headline result.
 
 ## Available Files
 

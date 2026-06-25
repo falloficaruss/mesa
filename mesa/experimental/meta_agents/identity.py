@@ -219,4 +219,8 @@ def ensure_entity_index(model: Any) -> EntityIndex:
     if entity_index is None:
         entity_index = EntityIndex()
         setattr(model, "entity_index", entity_index)
+        agents = getattr(model, "agents", None)
+        if agents is not None:
+            for agent in list(agents):
+                entity_index.register(agent)
     return entity_index
